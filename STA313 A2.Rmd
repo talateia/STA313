@@ -7,6 +7,7 @@ output: pdf_document
 
 ```{r, load data sets}
 #hello
+#hi
 ```
 
 ```{r, load libraries}
