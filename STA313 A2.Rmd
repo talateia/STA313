@@ -6,9 +6,11 @@ output: pdf_document
 ---
 
 ```{r, load data sets}
-#hello
-#hi
-#bye
+jobs <- read.csv('Jobs.csv')
+participants <- read.csv('Participants.csv')
+pubs <- read.csv ('Pubs.csv')
+rest <- read.csv('Restaurants.csv')
+finjour <- read.csv('Data/FinancialJournal.csv')
 ```
 
 ```{r, load libraries}
