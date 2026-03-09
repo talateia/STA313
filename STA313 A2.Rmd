@@ -5,15 +5,80 @@ date: "2026-03-06"
 output: pdf_document
 ---
 
-```{r, load data sets}
+```{r, load data sets. echo = FALSE, warning=FALSE}
 jobs <- read.csv('Jobs.csv')
 participants <- read.csv('Participants.csv')
 pubs <- read.csv ('Pubs.csv')
 rest <- read.csv('Restaurants.csv')
 finjour <- read.csv('Data/FinancialJournal.csv')
+logs <- read_csv("Data/ParticipantStatusLogs1.csv")
 ```
 
-```{r, load libraries}
+```{r, load libraries, echo = FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(sf)
+```
 
+```{r -  EDA #1 }
+# Exploring whether the social places are underused relative to their capacity:
+
+pubs <- pubs %>%
+  separate(location, into=c("lon","lat"), sep=",") %>%
+  mutate(
+    lon = as.numeric(lon),
+    lat = as.numeric(lat)
+  )
+
+ggplot(pubs, aes(x=lon, y=lat)) +
+  geom_point(aes(size=maxOccupancy), alpha=.7, color="darkred") +
+  scale_size_continuous(name="Max Occupancy") +
+  theme_minimal() +
+  labs(
+    title="Where Social Spaces Exist",
+    subtitle="Pubs sized by maximum occupancy"
+  )
+
+```
+
+```{r - EDA #2}
+# Where do people spend most of their time?
+mode_counts <- logs %>%
+  count(currentMode) %>%
+  mutate(prop = n/sum(n))
+
+ggplot(mode_counts, aes(x=reorder(currentMode, prop), y=prop)) +
+  geom_col(fill="steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title="Where Participants Spend Their Time",
+    y="Proportion of Time",
+    x=""
+  )
+
+# Least amount of time spent in restaurants, could it be becasue its too expensive?
+```
+
+```{r}
+restaurants <- restaurants %>%
+  mutate(
+    lon = as.numeric(str_extract(location, "-?\\d+\\.\\d+(?= )")),
+    lat = as.numeric(str_extract(location, "-?\\d+\\.\\d+$"))
+  )
+
+ggplot() +
+  geom_point(data=pubs, aes(lon,lat), color="red", alpha=.6) +
+  geom_point(data=restaurants, aes(lon,lat), color="orange", alpha=.6) +
+  theme_minimal() +
+  labs(title="Social Venues in Engagement City")
+
+
+library(readr)
+
+pubs2 <- read_csv(
+  "Pubs.csv",
+  col_types = cols(location = col_character())
+)
 ```
 
