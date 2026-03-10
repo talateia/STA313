@@ -11,34 +11,42 @@ participants <- read.csv('Participants.csv')
 pubs <- read.csv ('Pubs.csv')
 rest <- read.csv('Restaurants.csv')
 finjour <- read.csv('Data/FinancialJournal.csv')
-logs <- read_csv("Data/ParticipantStatusLogs1.csv")
+apartments <- read.csv('Apartments.csv')
+logs <- read.csv("Data/ParticipantStatusLogs1.csv")
 ```
 
 ```{r, load libraries, echo = FALSE, warning=FALSE}
 library(tidyverse)
 library(ggplot2)
 library(sf)
+library(dplyr)
+library(stringr)
 ```
 
 ```{r -  EDA #1 }
-# Exploring whether the social places are underused relative to their capacity:
+# Exploring how often social spaces were used across the observation period: 
+social_logs <- logs %>%
+  filter(currentMode %in% c("AtRestaurant", "AtRecreation"))
 
-pubs <- pubs %>%
-  separate(location, into=c("lon","lat"), sep=",") %>%
-  mutate(
-    lon = as.numeric(lon),
-    lat = as.numeric(lat)
-  )
+# Count total visits per venue type
+visits_summary <- social_logs %>%
+  mutate(venueType = ifelse(str_detect(currentMode, "Restaurant"), "Restaurant", "Pub")) %>%
+  group_by(venueType) %>%
+  summarise(total_visitors = n_distinct(participantId), .groups = "drop")
 
-ggplot(pubs, aes(x=lon, y=lat)) +
-  geom_point(aes(size=maxOccupancy), alpha=.7, color="darkred") +
-  scale_size_continuous(name="Max Occupancy") +
-  theme_minimal() +
+# Bar chart
+ggplot(visits_summary, aes(x = venueType, y = total_visitors, fill = venueType)) +
+  geom_col() +
   labs(
-    title="Where Social Spaces Exist",
-    subtitle="Pubs sized by maximum occupancy"
-  )
+    title = "Total Visits to Social Venues",
+    x = "Venue Type",
+    y = "Number of Visits"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("Pub" = "darkred", "Restaurant" = "orange")) +
+  theme(legend.position = "none")
 
+# kinda useless plot, results ignore temporal patterns, repeat visits, length of time spent at venue
 ```
 
 ```{r - EDA #2}
@@ -60,25 +68,81 @@ ggplot(mode_counts, aes(x=reorder(currentMode, prop), y=prop)) +
 # Least amount of time spent in restaurants, could it be becasue its too expensive?
 ```
 
-```{r}
-restaurants <- restaurants %>%
-  mutate(
-    lon = as.numeric(str_extract(location, "-?\\d+\\.\\d+(?= )")),
-    lat = as.numeric(str_extract(location, "-?\\d+\\.\\d+$"))
+```{r, EDA #3, warning = FALSE}
+# where are social venues located across the city?
+
+extract_xy <- function(df){
+  coords <- str_extract_all(df$location, "-?\\d+\\.?\\d*")
+  
+  df$x <- as.numeric(sapply(coords, `[`, 1))
+  df$y <- as.numeric(sapply(coords, `[`, 2))
+  
+  return(df)
+}
+
+pubs <- pubs %>% extract_xy()
+rest <-  rest %>%extract_xy()
+apartments <-  apartments %>% extract_xy()
+
+# Mapping pub locations and their maximum occupancy 
+ggplot(pubs, aes(x, y)) +
+  geom_point(aes(size = maxOccupancy), color = "darkred", alpha = .7) +
+  theme_minimal() +
+  labs(
+    title = "Pub Locations in Engagement City",
+    x = "City X",
+    y = "City Y"
   )
 
 ggplot() +
-  geom_point(data=pubs, aes(lon,lat), color="red", alpha=.6) +
-  geom_point(data=restaurants, aes(lon,lat), color="orange", alpha=.6) +
+  geom_point(data = pubs, aes(x, y), color = "red", alpha = .7) +
+  geom_point(data = rest, aes(x, y), color = "orange", alpha = .7) +
   theme_minimal() +
-  labs(title="Social Venues in Engagement City")
-
-
-library(readr)
-
-pubs2 <- read_csv(
-  "Pubs.csv",
-  col_types = cols(location = col_character())
-)
+  labs(title = "Social Venues Across Engagement City")
 ```
+```{r, EDA #4 warning = FALSE}
+# How accessible are social venues to the citizens?
+# combine all venues
+venues <- bind_rows(
+  pubs %>% select(x, y),
+  rest %>% select(x, y)
+)
+
+# compute the distance to nearest venue 
+#install.packages('FNN')
+library(FNN)
+
+apartment_coords <- apartments %>% select(x, y)
+venue_coords <- venues %>% select(x, y)
+
+nn <- get.knnx(venue_coords, apartment_coords, k = 1)
+
+apartments$distance_to_venue <- nn$nn.dist[,1]
+
+ggplot(apartments, aes(x, y, color = distance_to_venue)) +
+  geom_point(size = 2) +
+  scale_color_viridis_c() +
+  theme_minimal() +
+  labs(
+    title = "Distance from Apartments to the Nearest Social Venue",
+    color = "Distance"
+  )
+
+# Add venues in red to visualize how far apartments are from pubs and restaurants
+
+ggplot() +
+  geom_point(data = apartments,
+             aes(x, y, color = distance_to_venue),
+             size = 2) +
+  geom_point(data = venues,
+             aes(x, y),
+             color = "red",
+             size = 3) +
+  scale_color_viridis_c() +
+  theme_minimal() +
+  labs(
+    title = "Social Accessibility Across Engagement City"
+  )
+```
+
 
