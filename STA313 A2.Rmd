@@ -13,6 +13,7 @@ rest <- read.csv('Restaurants.csv')
 finjour <- read.csv('Data/FinancialJournal.csv')
 apartments <- read.csv('Apartments.csv')
 logs <- read.csv("Data/ParticipantStatusLogs1.csv")
+travel_data <- read.csv("Data/TravelJournal.csv")
 ```
 
 ```{r, load libraries, echo = FALSE, warning=FALSE}
@@ -21,6 +22,7 @@ library(ggplot2)
 library(sf)
 library(dplyr)
 library(stringr)
+library(data.table)
 ```
 
 ```{r -  EDA #1 }
@@ -55,14 +57,23 @@ mode_counts <- logs %>%
   count(currentMode) %>%
   mutate(prop = n/sum(n))
 
-ggplot(mode_counts, aes(x=reorder(currentMode, prop), y=prop)) +
-  geom_col(fill="steelblue") +
+mode_counts <- mode_counts %>%
+  mutate(type = ifelse(currentMode %in% c("AtRestaurant","AtRecreation"),
+                       "Social", "Other"))
+
+ggplot(mode_counts, aes(x = reorder(currentMode, prop), y = prop, fill = type)) +
+  geom_col() +
   coord_flip() +
+  scale_fill_manual(values = c(
+    "Social" = "red",
+    "Other" = "grey70"
+  )) +
   theme_minimal() +
   labs(
-    title="Where Participants Spend Their Time",
-    y="Proportion of Time",
-    x=""
+    title = "Where Participants Spend Their Time",
+    y = "Proportion of Time",
+    x = "",
+    fill = "Activity Type"
   )
 
 # Least amount of time spent in restaurants, could it be becasue its too expensive?
@@ -99,9 +110,12 @@ ggplot() +
   geom_point(data = rest, aes(x, y), color = "orange", alpha = .7) +
   theme_minimal() +
   labs(title = "Social Venues Across Engagement City")
+
+# Useful but weak visualisations, can add more data from the particpants' info to make them more informative!
 ```
-```{r, EDA #4 warning = FALSE}
+```{r, EDA #4, warning = FALSE}
 # How accessible are social venues to the citizens?
+
 # combine all venues
 venues <- bind_rows(
   pubs %>% select(x, y),
@@ -119,30 +133,97 @@ nn <- get.knnx(venue_coords, apartment_coords, k = 1)
 
 apartments$distance_to_venue <- nn$nn.dist[,1]
 
-ggplot(apartments, aes(x, y, color = distance_to_venue)) +
-  geom_point(size = 2) +
-  scale_color_viridis_c() +
-  theme_minimal() +
-  labs(
-    title = "Distance from Apartments to the Nearest Social Venue",
-    color = "Distance"
-  )
-
-# Add venues in red to visualize how far apartments are from pubs and restaurants
+# Add venues in blue to visualize how far apartments are from pubs and restaurants
 
 ggplot() +
   geom_point(data = apartments,
-             aes(x, y, color = distance_to_venue),
+             aes(x = x, y = y, color = distance_to_venue),
              size = 2) +
   geom_point(data = venues,
-             aes(x, y),
-             color = "red",
+             aes(x = x, y = y),
+             color = "blue",
              size = 3) +
-  scale_color_viridis_c() +
+  scale_color_viridis_c(
+    option = "magma",     
+    direction = -1,         
+    name = "Distance to Venues"
+  ) +
   theme_minimal() +
   labs(
-    title = "Social Accessibility Across Engagement City"
+    title = "Social Accessibility Across the City",
+    x = "East–West Location",
+    y = "North–South Location",
+    caption = "Blue dots represent restaurants and pubs"
   )
+
+# only one cluster of apartments is noticeably far from social venues
+```
+
+
+
+```{r, EDA #5 }
+# Exploring relationship between health demographics and sociability
+
+
+## Following code is to prep data for visaulisations
+dt_travel <- as.data.table(travel_data)
+dt_logs <- as.data.table(logs)
+dt_participants <- as.data.table(participants)
+
+# Add joviality
+dt_travel <- dt_participants[, .(participantId, joviality)][dt_travel, on = "participantId"]
+
+# Make sure timestamps are POSIXct
+dt_travel[, checkOutTime := as.POSIXct(checkOutTime)]
+dt_travel[, travelEndTime := as.POSIXct(travelEndTime)]
+dt_travel[, tripDuration := as.numeric(difftime(travelEndTime, checkOutTime, units = "mins"))]
+
+# Simplify purpose
+dt_travel[, purposeType := ifelse(purpose == "Recreation (Social Gathering)", "Social", "Non-Social")]
+
+```
+
+
+```{r, EDA #5 contd}
+dt_travel <- dt_travel %>%
+  mutate(
+    jov_bin = cut(joviality,
+                  breaks = seq(0, 1, length.out = 10),
+                  include.lowest = TRUE,
+                  labels = round(seq(0, 1, length.out = 9), 1))
+  )
+
+# 2. Aggregate mean trip duration
+duration_summary <- dt_travel %>%
+  group_by(jov_bin) %>%
+  summarise(
+    avgDuration = mean(tripDuration, na.rm = TRUE),
+    n = n()
+  ) %>%
+  ungroup()
+
+# 3. Plot with highlight for jump
+ggplot(duration_summary, aes(x = jov_bin, y = avgDuration)) +
+  geom_line(group = 1, color = "orange", size = 1.2) +
+  geom_point(size = 3, color = "orange") +
+  # Arrow to highlight jump
+  geom_segment(
+    data = duration_summary %>% filter(jov_bin %in% c("0.2", "0.4")),
+    aes(x = 3, xend = 4,  # numeric positions of bins 0.2 -> 0.4
+        y = avgDuration[1],
+        yend = avgDuration[2]),
+    arrow = arrow(length = unit(0.2, "inches")),
+    color = "blue",
+    size = 1.2
+  ) +
+  scale_y_log10() +
+  labs(
+    x = "Joviality Score (binned 0–1)",
+    y = "Average Trip Duration (minutes, log scale)",
+    title = "Average Trip Duration by Mood",
+    subtitle = "Arrow highlights the jump in trip duration from 0.2–0.4 joviality"
+  ) +
+  theme_minimal(base_size = 14)
 ```
 
 
