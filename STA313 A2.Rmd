@@ -146,7 +146,7 @@ ggplot() +
   scale_color_viridis_c(
     option = "magma",     
     direction = -1,         
-    name = "Distance to Venues"
+    name = "Distance to Venues \nfrom Apartments"
   ) +
   theme_minimal() +
   labs(
@@ -176,7 +176,7 @@ dt_travel <- dt_participants[, .(participantId, joviality)][dt_travel, on = "par
 # Make sure timestamps are POSIXct
 dt_travel[, checkOutTime := as.POSIXct(checkOutTime)]
 dt_travel[, travelEndTime := as.POSIXct(travelEndTime)]
-dt_travel[, tripDuration := as.numeric(difftime(travelEndTime, checkOutTime, units = "mins"))]
+dt_travel[, tripDuration := as.numeric(difftime(travelEndTime, travelStartTime, units = "mins"))]
 
 # Simplify purpose
 dt_travel[, purposeType := ifelse(purpose == "Recreation (Social Gathering)", "Social", "Non-Social")]
@@ -203,27 +203,27 @@ duration_summary <- dt_travel %>%
   ungroup()
 
 # 3. Plot with highlight for jump
+
 ggplot(duration_summary, aes(x = jov_bin, y = avgDuration)) +
   geom_line(group = 1, color = "orange", size = 1.2) +
   geom_point(size = 3, color = "orange") +
   # Arrow to highlight jump
   geom_segment(
     data = duration_summary %>% filter(jov_bin %in% c("0.2", "0.4")),
-    aes(x = 3, xend = 4,  # numeric positions of bins 0.2 -> 0.4
-        y = avgDuration[1],
-        yend = avgDuration[2]),
+    aes(x = 6, xend = 7,  # numeric positions of bins 0.2 -> 0.4
+        y = duration_summary$avgDuration[6],
+        yend = duration_summary$avgDuration[7]),
     arrow = arrow(length = unit(0.2, "inches")),
     color = "blue",
     size = 1.2
   ) +
-  scale_y_log10() +
   labs(
     x = "Joviality Score (binned 0–1)",
-    y = "Average Trip Duration (minutes, log scale)",
-    title = "Average Trip Duration by Mood",
-    subtitle = "Arrow highlights the jump in trip duration from 0.2–0.4 joviality"
+    y = "Average Trip Duration (minutes)",
+    title = "Average Trip Duration by Mood"
   ) +
   theme_minimal(base_size = 14)
 ```
+
 
 
